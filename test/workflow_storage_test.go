@@ -80,7 +80,6 @@ func TestSaveLoadWorkflow(t *testing.T) {
 	}
 
 	store := storage.NewWorkflowStorage(db)
-
 	if err := store.SaveWorkflow(ctx, wf); err != nil {
 		t.Fatalf("Failed to save workflow: %v", err)
 	}
