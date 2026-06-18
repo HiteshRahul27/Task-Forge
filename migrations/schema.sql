@@ -13,6 +13,8 @@ CREATE TABLE steps(
     id UUID PRIMARY KEY,
     workflow_id UUID NOT NULL REFERENCES workflow(id) ON DELETE CASCADE,
 
+    type TEXT NOT NULL,
+
     status TEXT NOT NULL,
 
     payload JSONB DEFAULT '{}',

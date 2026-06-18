@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"durable-engine/internal/workflow"
+	"encoding/json"
 	"fmt"
+	"time"
 )
 
 type WorkflowStorage struct {
@@ -13,6 +15,13 @@ type WorkflowStorage struct {
 
 func NewWorkflowStorage(db *sql.DB) *WorkflowStorage {
 	return &WorkflowStorage{db: db}
+}
+
+func toNullTime(t *time.Time) sql.NullTime {
+	if t == nil {
+		return sql.NullTime{Valid: false}
+	}
+	return sql.NullTime{Time: *t, Valid: true}
 }
 
 func (s *WorkflowStorage) SaveWorkflow(ctx context.Context, wf *workflow.Workflow) error {
@@ -25,7 +34,7 @@ func (s *WorkflowStorage) SaveWorkflow(ctx context.Context, wf *workflow.Workflo
 	workflowQuery := `
 		INSERT INTO workflow (id, name, status, created_at, updated_at, completed_at)
 		VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (id) DO UPDATE SET status = $3, updated_at = $5, completed_at = $6;` // Added upsert capability safely
+		ON CONFLICT (id) DO UPDATE SET status = $3, updated_at = $5, completed_at = $6;`
 
 	_, err = tx.ExecContext(ctx, workflowQuery,
 		wf.ID,
@@ -33,7 +42,7 @@ func (s *WorkflowStorage) SaveWorkflow(ctx context.Context, wf *workflow.Workflo
 		wf.Status,
 		wf.CreatedAt,
 		wf.UpdatedAt,
-		wf.CompleteAt,
+		toNullTime(wf.CompleteAt),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to insert workflow: %w", err)
@@ -41,15 +50,16 @@ func (s *WorkflowStorage) SaveWorkflow(ctx context.Context, wf *workflow.Workflo
 
 	stepQuery := `
 		INSERT INTO steps (
-			id, workflow_id, status, output, error, payload, retries, max_retries, 
+			id, workflow_id, type, status, output, error, payload, retries, max_retries, 
 			execution_hash, created_at, updated_at, completed_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-		ON CONFLICT (id) DO UPDATE SET status = $3, output = $4, error = $5, retries = $7, updated_at = $11, completed_at = $12;`
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		ON CONFLICT (id) DO UPDATE SET type = $3, status = $4, output = $5, error = $6, retries = $8, updated_at = $12, completed_at = $13;`
 
 	for _, step := range wf.Steps {
 		_, err = tx.ExecContext(ctx, stepQuery,
 			step.ID,
 			wf.ID,
+			step.Type,
 			step.Status,
 			step.Output,
 			step.Error,
@@ -59,7 +69,7 @@ func (s *WorkflowStorage) SaveWorkflow(ctx context.Context, wf *workflow.Workflo
 			step.ExecutionHash,
 			step.CreatedAt,
 			step.UpdatedAt,
-			step.CompleteAt,
+			toNullTime(step.CompleteAt),
 		)
 		if err != nil {
 			return fmt.Errorf("failed to insert/update step %s: %w", step.ID, err)
@@ -106,7 +116,7 @@ func (s *WorkflowStorage) LoadWorkflow(ctx context.Context, workflowID string) (
 	wf.DAG = workflow.NewDAG()
 
 	stepsQuery := `
-		SELECT id, payload, output, error, status, retries, max_retries, execution_hash, created_at, updated_at, completed_at 
+		SELECT id, type, payload, output, error, status, retries, max_retries, execution_hash, created_at, updated_at, completed_at 
 		FROM steps 
 		WHERE workflow_id = $1`
 
@@ -119,14 +129,34 @@ func (s *WorkflowStorage) LoadWorkflow(ctx context.Context, workflowID string) (
 	for rows.Next() {
 		step := &workflow.Step{}
 		var completedAt sql.NullTime
+		var rawOutput []byte
+		var rawError sql.NullString
 
 		err := rows.Scan(
-			&step.ID, &step.Payload, &step.Output, &step.Error, &step.Status,
-			&step.Retries, &step.MaxRetries, &step.ExecutionHash,
-			&step.CreatedAt, &step.UpdatedAt, &completedAt,
+			&step.ID,
+			&step.Type,
+			&step.Payload,
+			&rawOutput,
+			&rawError,
+			&step.Status,
+			&step.Retries,
+			&step.MaxRetries,
+			&step.ExecutionHash,
+			&step.CreatedAt,
+			&step.UpdatedAt,
+			&completedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan step row: %w", err)
+		}
+
+		if rawOutput != nil {
+			step.Output = json.RawMessage(rawOutput)
+		}
+
+		if rawError.Valid {
+			errStr := rawError.String
+			step.Error = &errStr
 		}
 
 		if completedAt.Valid {
@@ -147,7 +177,7 @@ func (s *WorkflowStorage) LoadWorkflow(ctx context.Context, workflowID string) (
 	}
 
 	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("step rows iteration error: %w", err)
+		return nil, fmt.Errorf("step rows integration error: %w", err)
 	}
 
 	depQuery := `
