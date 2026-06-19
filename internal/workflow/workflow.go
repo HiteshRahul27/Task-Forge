@@ -62,3 +62,7 @@ func (wf *Workflow) AddStep(step *Step, dependsOn []string) error {
 	}
 	return wf.DAG.AddNode(node)
 }
+
+func (wf *Workflow) Validate() error {
+	return wf.DAG.ValidateCycles()
+}

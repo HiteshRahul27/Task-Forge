@@ -32,9 +32,9 @@ func (s *WorkflowStorage) SaveWorkflow(ctx context.Context, wf *workflow.Workflo
 	defer tx.Rollback()
 
 	workflowQuery := `
-		INSERT INTO workflow (id, name, status, created_at, updated_at, completed_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (id) DO UPDATE SET status = $3, updated_at = $5, completed_at = $6;`
+        INSERT INTO workflow (id, name, status, created_at, updated_at, completed_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (id) DO UPDATE SET status = $3, updated_at = $5, completed_at = $6;`
 
 	_, err = tx.ExecContext(ctx, workflowQuery,
 		wf.ID,
@@ -49,11 +49,11 @@ func (s *WorkflowStorage) SaveWorkflow(ctx context.Context, wf *workflow.Workflo
 	}
 
 	stepQuery := `
-		INSERT INTO steps (
-			id, workflow_id, type, status, output, error, payload, retries, max_retries, 
-			execution_hash, created_at, updated_at, completed_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-		ON CONFLICT (id) DO UPDATE SET type = $3, status = $4, output = $5, error = $6, retries = $8, updated_at = $12, completed_at = $13;`
+        INSERT INTO steps (
+            id, workflow_id, type, status, output, error, payload, retries, max_retries, 
+            execution_hash, created_at, updated_at, completed_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        ON CONFLICT (id) DO UPDATE SET type = $3, status = $4, output = $5, error = $6, retries = $8, updated_at = $12, completed_at = $13;`
 
 	for _, step := range wf.Steps {
 		_, err = tx.ExecContext(ctx, stepQuery,
@@ -77,9 +77,9 @@ func (s *WorkflowStorage) SaveWorkflow(ctx context.Context, wf *workflow.Workflo
 	}
 
 	depQuery := `
-		INSERT INTO step_dependencies (step_id, depends_on_step_id)
-		VALUES ($1, $2)
-		ON CONFLICT DO NOTHING;`
+        INSERT INTO step_dependencies (step_id, depends_on_step_id)
+        VALUES ($1, $2)
+        ON CONFLICT DO NOTHING;`
 
 	for stepID, node := range wf.DAG.Nodes {
 		for _, depID := range node.DependsOn {
@@ -116,9 +116,9 @@ func (s *WorkflowStorage) LoadWorkflow(ctx context.Context, workflowID string) (
 	wf.DAG = workflow.NewDAG()
 
 	stepsQuery := `
-		SELECT id, type, payload, output, error, status, retries, max_retries, execution_hash, created_at, updated_at, completed_at 
-		FROM steps 
-		WHERE workflow_id = $1`
+        SELECT id, type, payload, output, error, status, retries, max_retries, execution_hash, created_at, updated_at, completed_at 
+        FROM steps 
+        WHERE workflow_id = $1`
 
 	rows, err := s.db.QueryContext(ctx, stepsQuery, workflowID)
 	if err != nil {
@@ -132,10 +132,12 @@ func (s *WorkflowStorage) LoadWorkflow(ctx context.Context, workflowID string) (
 		var rawOutput []byte
 		var rawError sql.NullString
 
+		var rawPayload []byte
+
 		err := rows.Scan(
 			&step.ID,
 			&step.Type,
-			&step.Payload,
+			&rawPayload,
 			&rawOutput,
 			&rawError,
 			&step.Status,
@@ -148,6 +150,12 @@ func (s *WorkflowStorage) LoadWorkflow(ctx context.Context, workflowID string) (
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan step row: %w", err)
+		}
+
+		if rawPayload != nil {
+			step.Payload = json.RawMessage(rawPayload)
+		} else {
+			step.Payload = json.RawMessage(`{}`)
 		}
 
 		if rawOutput != nil {
@@ -181,10 +189,10 @@ func (s *WorkflowStorage) LoadWorkflow(ctx context.Context, workflowID string) (
 	}
 
 	depQuery := `
-		SELECT step_dependencies.step_id, step_dependencies.depends_on_step_id 
-		FROM step_dependencies
-		INNER JOIN steps s ON step_dependencies.step_id = s.id
-		WHERE s.workflow_id = $1`
+        SELECT step_dependencies.step_id, step_dependencies.depends_on_step_id 
+        FROM step_dependencies
+        INNER JOIN steps s ON step_dependencies.step_id = s.id
+        WHERE s.workflow_id = $1`
 
 	depRows, err := s.db.QueryContext(ctx, depQuery, workflowID)
 	if err != nil {
