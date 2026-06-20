@@ -53,7 +53,7 @@ func TestFullWorkflowEngine(t *testing.T) {
 
 	execInstance.RegisterHandler("dummy", dummyHandler)
 
-	err := runner.RunWorkflow(ctx, wf, execInstance)
+	err := runner.RunWorkflow(ctx, wf, execInstance, nil)
 	if err != nil {
 		t.Fatalf("Workflow execution completely broke: %v", err)
 	}

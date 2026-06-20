@@ -219,23 +219,41 @@ func (h *WorkflowHandler) ExecuteWorkflow(w http.ResponseWriter, r *http.Request
 	}
 
 	if wf.Status == workflow.WorkflowRunning {
+		timeoutThreshold := 10 * time.Second
 
-		allPending := true
+		if time.Since(wf.UpdatedAt) > timeoutThreshold {
 
-		for _, step := range wf.Steps {
-			if step.Status != workflow.Pending {
-				allPending = false
-				break
+			recovered := false
+
+			for _, step := range wf.Steps {
+				if step.Status == workflow.Running {
+
+					step.Status = workflow.Pending
+					step.UpdatedAt = time.Now()
+
+					recovered = true
+				}
 			}
-		}
 
-		if allPending {
-			wf.Status = workflow.NotStarted
+			if recovered {
+				wf.Status = workflow.NotStarted
+				wf.UpdatedAt = time.Now()
+
+				if err := h.store.SaveWorkflow(r.Context(), wf); err != nil {
+					h.writeError(
+						w,
+						http.StatusInternalServerError,
+						"failed to save recovered workflow: "+err.Error(),
+					)
+					return
+				}
+			}
+
 		} else {
 			h.writeError(
 				w,
 				http.StatusConflict,
-				"workflow is already running",
+				"workflow is already running and active",
 			)
 			return
 		}
@@ -268,7 +286,7 @@ func (h *WorkflowHandler) ExecuteWorkflow(w http.ResponseWriter, r *http.Request
 func (h *WorkflowHandler) runEngine(wf *workflow.Workflow, exec *executor.StepExecutor) {
 	ctx := context.Background()
 
-	err := runner.RunWorkflow(ctx, wf, exec)
+	err := runner.RunWorkflow(ctx, wf, exec, h.store)
 
 	wf.UpdatedAt = time.Now()
 	if err != nil {
@@ -293,7 +311,7 @@ func (h *WorkflowHandler) registerSystemHandlers(exec *executor.StepExecutor) {
 	exec.RegisterHandler("delay", func(ctx context.Context, payload json.RawMessage) (json.RawMessage, error) {
 		fmt.Println("DELAY START")
 
-		for i := 1; i <= 60; i++ {
+		for i := 1; i <= 15; i++ {
 			time.Sleep(1 * time.Second)
 			fmt.Printf("second %d\n", i)
 		}

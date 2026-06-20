@@ -48,7 +48,7 @@ func TestWorkflowFailure(t *testing.T) {
 
 	execInstance.RegisterHandler("dummy", dummyHandler)
 
-	err := runner.RunWorkflow(context.Background(), wf, execInstance)
+	err := runner.RunWorkflow(context.Background(), wf, execInstance, nil)
 	if err == nil {
 		t.Fatalf("Expected to fail running workflow, but got no error")
 	}

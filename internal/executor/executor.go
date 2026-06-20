@@ -5,6 +5,8 @@ import (
 	"durable-engine/internal/workflow"
 	"encoding/json"
 	"fmt"
+	"math"
+	"time"
 )
 
 type TaskHandler func(ctx context.Context, payload json.RawMessage) (json.RawMessage, error)
@@ -24,34 +26,30 @@ func (e *StepExecutor) RegisterHandler(name string, handler TaskHandler) {
 }
 
 func (e *StepExecutor) ExecuteStep(ctx context.Context, step *workflow.Step, stepType string) error {
-
-	if err := step.TransitionStatus(workflow.Running); err != nil {
-		return fmt.Errorf("failed to start step %s: %w", step.ID, err)
-	}
-
 	handler, exists := e.handlers[stepType]
 	if !exists {
 		errText := fmt.Sprintf("no task handler registered for type %s", stepType)
-
 		step.Error = &errText
-
-		if err := step.TransitionStatus(workflow.Failed); err != nil {
-			return fmt.Errorf("handler missing and failed transition failed: %w", err)
-		}
-
+		_ = step.TransitionStatus(workflow.Failed)
 		return fmt.Errorf("%s", errText)
 	}
 
 	output, err := handler(ctx, step.Payload)
-
 	if err != nil {
+		errStr := err.Error()
+		step.Error = &errStr
 
 		if step.Retries < step.MaxRetries {
+			baseDelay := 1 * time.Second
+			backoffFactor := math.Pow(2, float64(step.Retries))
+			delayDuration := time.Duration(backoffFactor) * baseDelay
+
+			maxDelay := 30 * time.Second
+			if delayDuration > maxDelay {
+				delayDuration = maxDelay
+			}
 
 			step.Retries++
-
-			errStr := err.Error()
-			step.Error = &errStr
 
 			if transitionErr := step.TransitionStatus(workflow.Failed); transitionErr != nil {
 				return fmt.Errorf(
@@ -59,6 +57,12 @@ func (e *StepExecutor) ExecuteStep(ctx context.Context, step *workflow.Step, ste
 					errStr,
 					transitionErr,
 				)
+			}
+
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(delayDuration):
 			}
 
 			if transitionErr := step.TransitionStatus(workflow.Pending); transitionErr != nil {
@@ -71,9 +75,6 @@ func (e *StepExecutor) ExecuteStep(ctx context.Context, step *workflow.Step, ste
 
 			return err
 		}
-
-		errStr := err.Error()
-		step.Error = &errStr
 
 		if transitionErr := step.TransitionStatus(workflow.Failed); transitionErr != nil {
 			return fmt.Errorf(
@@ -88,12 +89,8 @@ func (e *StepExecutor) ExecuteStep(ctx context.Context, step *workflow.Step, ste
 
 	step.Output = output
 	step.Error = nil
-
 	if err := step.TransitionStatus(workflow.Success); err != nil {
-		return fmt.Errorf(
-			"execution succeeded but success transition failed: %w",
-			err,
-		)
+		return fmt.Errorf("execution succeeded but success transition failed: %w", err)
 	}
 
 	return nil

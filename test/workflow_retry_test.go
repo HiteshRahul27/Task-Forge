@@ -47,6 +47,7 @@ func TestWorkflowRetry(t *testing.T) {
 		context.Background(),
 		wf,
 		execInstance,
+		nil,
 	)
 
 	if err != nil {

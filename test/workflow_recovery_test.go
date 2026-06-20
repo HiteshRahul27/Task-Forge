@@ -151,7 +151,7 @@ func TestWorkflowRecovery(t *testing.T) {
 		return []byte(`{"result":"success"}`), nil
 	})
 
-	err = runner.RunWorkflow(ctx, loadedWf, execInstance)
+	err = runner.RunWorkflow(ctx, loadedWf, execInstance, nil)
 	if err != nil {
 		t.Fatalf("Workflow execution completely broke: %v", err)
 	}
