@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"durable-engine/internal/api"
 	"durable-engine/internal/storage"
@@ -47,7 +48,14 @@ func main() {
 
 	http.HandleFunc(
 		"/api/v1/workflows/",
-		handler.GetWorkflow,
+		func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasSuffix(r.URL.Path, "/execute") {
+				handler.ExecuteWorkflow(w, r)
+				return
+			}
+
+			handler.GetWorkflow(w, r)
+		},
 	)
 
 	log.Println("Server listening on :8080")

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"durable-engine/internal/executor"
+	"durable-engine/internal/runner"
 	"durable-engine/internal/storage"
 	"durable-engine/internal/workflow"
 
@@ -182,23 +185,121 @@ func (h *WorkflowHandler) GetWorkflow(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, wf)
 }
 
-func (h *WorkflowHandler) writeError(
-	w http.ResponseWriter,
-	status int,
-	message string,
-) {
+func (h *WorkflowHandler) writeError(w http.ResponseWriter, status int, message string) {
 	h.writeJSON(w, status, map[string]string{
 		"error": message,
 	})
 }
 
-func (h *WorkflowHandler) writeJSON(
-	w http.ResponseWriter,
-	status int,
-	data interface{},
-) {
+func (h *WorkflowHandler) writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 
 	_ = json.NewEncoder(w).Encode(data)
+}
+
+func (h *WorkflowHandler) ExecuteWorkflow(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 6 || parts[5] != "execute" {
+		h.writeError(w, http.StatusBadRequest, "invalid url path structure")
+		return
+	}
+
+	workflowID := parts[4]
+
+	wf, err := h.store.LoadWorkflow(r.Context(), workflowID)
+	if err != nil {
+		h.writeError(w, http.StatusNotFound, "workflow not found: "+err.Error())
+		return
+	}
+
+	if wf.Status == workflow.WorkflowRunning {
+
+		allPending := true
+
+		for _, step := range wf.Steps {
+			if step.Status != workflow.Pending {
+				allPending = false
+				break
+			}
+		}
+
+		if allPending {
+			wf.Status = workflow.NotStarted
+		} else {
+			h.writeError(
+				w,
+				http.StatusConflict,
+				"workflow is already running",
+			)
+			return
+		}
+	}
+
+	if wf.Status == workflow.Completed {
+		h.writeError(w, http.StatusConflict, "workflow is already completed")
+		return
+	}
+
+	wf.Status = workflow.WorkflowRunning
+	wf.UpdatedAt = time.Now()
+	if err := h.store.SaveWorkflow(r.Context(), wf); err != nil {
+		h.writeError(w, http.StatusInternalServerError, "failed to initialize execution state: "+err.Error())
+		return
+	}
+
+	execInstance := executor.NewStepExecutor()
+	h.registerSystemHandlers(execInstance)
+
+	go h.runEngine(wf, execInstance)
+
+	h.writeJSON(w, http.StatusAccepted, map[string]interface{}{
+		"workflow_id":  wf.ID,
+		"status":       wf.Status,
+		"triggered_at": wf.UpdatedAt,
+	})
+}
+
+func (h *WorkflowHandler) runEngine(wf *workflow.Workflow, exec *executor.StepExecutor) {
+	ctx := context.Background()
+
+	err := runner.RunWorkflow(ctx, wf, exec)
+
+	wf.UpdatedAt = time.Now()
+	if err != nil {
+		fmt.Printf("[Engine] Execution failed for workflow %s: %v\n", wf.ID, err)
+		wf.Status = workflow.WorkflowFailed
+	} else {
+		fmt.Printf("[Engine] Execution successfully completed for workflow %s\n", wf.ID)
+		wf.Status = workflow.Completed
+	}
+
+	_ = h.store.SaveWorkflow(ctx, wf)
+}
+
+func (h *WorkflowHandler) registerSystemHandlers(exec *executor.StepExecutor) {
+
+	exec.RegisterHandler("dummy",
+		func(ctx context.Context, payload json.RawMessage) (json.RawMessage, error) {
+			return json.RawMessage(`{"result":"processed"}`), nil
+		},
+	)
+
+	exec.RegisterHandler("delay", func(ctx context.Context, payload json.RawMessage) (json.RawMessage, error) {
+		fmt.Println("DELAY START")
+
+		for i := 1; i <= 60; i++ {
+			time.Sleep(1 * time.Second)
+			fmt.Printf("second %d\n", i)
+		}
+
+		fmt.Println("DELAY END")
+
+		return json.RawMessage(`{"result":"delay-finished"}`), nil
+	})
 }
