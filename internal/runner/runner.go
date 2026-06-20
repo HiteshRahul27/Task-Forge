@@ -21,8 +21,13 @@ func RunWorkflow(
 	wf.Status = workflow.WorkflowRunning
 	wf.UpdatedAt = time.Now()
 
-	if err := store.SaveWorkflow(ctx, wf); err != nil {
-		return fmt.Errorf("failed to save initial workflow state: %w", err)
+	if store != nil {
+		if err := store.SaveWorkflow(ctx, wf); err != nil {
+			return fmt.Errorf(
+				"failed to save initial workflow state: %w",
+				err,
+			)
+		}
 	}
 
 	for {
@@ -44,18 +49,24 @@ func RunWorkflow(
 
 			if allCompleted {
 				wf.Status = workflow.Completed
-				_ = store.SaveWorkflow(ctx, wf)
+				if store != nil {
+					_ = store.SaveWorkflow(ctx, wf)
+				}
 				return nil
 			}
 
 			if hasFailures {
 				wf.Status = workflow.WorkflowFailed
-				_ = store.SaveWorkflow(ctx, wf)
+				if store != nil {
+					_ = store.SaveWorkflow(ctx, wf)
+				}
 				return fmt.Errorf("workflow failed")
 			}
 
 			wf.Status = workflow.WorkflowFailed
-			_ = store.SaveWorkflow(ctx, wf)
+			if store != nil {
+				_ = store.SaveWorkflow(ctx, wf)
+			}
 			return fmt.Errorf("workflow is stuck")
 		}
 
@@ -67,15 +78,22 @@ func RunWorkflow(
 			}
 			wf.UpdatedAt = time.Now()
 
-			if err := store.SaveWorkflow(ctx, wf); err != nil {
-				return fmt.Errorf("failed to save step running state: %w", err)
+			if store != nil {
+				if err := store.SaveWorkflow(ctx, wf); err != nil {
+					return fmt.Errorf(
+						"failed to save initial workflow state: %w",
+						err,
+					)
+				}
 			}
 
 			err := exec.ExecuteStep(ctx, step, step.Type)
 
 			wf.UpdatedAt = time.Now()
-			if saveErr := store.SaveWorkflow(ctx, wf); saveErr != nil {
-				return fmt.Errorf("failed to save step post-execution state: %w", saveErr)
+			if store != nil {
+				if saveErr := store.SaveWorkflow(ctx, wf); saveErr != nil {
+					return fmt.Errorf("failed to save step post-execution state: %w", saveErr)
+				}
 			}
 
 			if err != nil {

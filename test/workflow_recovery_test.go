@@ -21,7 +21,7 @@ import (
 func TestWorkflowRecovery(t *testing.T) {
 	ctx := context.Background()
 
-	if err := godotenv.Load(); err != nil {
+	if err := godotenv.Load("../.env"); err != nil {
 		log.Println("No .env file found, falling back to system environment variables")
 	}
 
