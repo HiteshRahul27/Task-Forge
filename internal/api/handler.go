@@ -320,4 +320,6 @@ func (h *WorkflowHandler) registerSystemHandlers(exec *executor.StepExecutor) {
 
 		return json.RawMessage(`{"result":"delay-finished"}`), nil
 	})
+
+	exec.RegisterHandler("http", executor.HTTPTaskHandler)
 }
