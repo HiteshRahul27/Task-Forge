@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"durable-engine/internal/storage"
-	"durable-engine/internal/workflow"
+	"task-forge/internal/storage"
+	"task-forge/internal/workflow"
 
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"

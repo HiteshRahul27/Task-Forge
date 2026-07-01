@@ -1,4 +1,4 @@
-module durable-engine
+module task-forge
 
 go 1.26.3
 

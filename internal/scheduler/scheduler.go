@@ -1,7 +1,7 @@
 package scheduler
 
 import (
-	"durable-engine/internal/workflow"
+	"task-forge/internal/workflow"
 )
 
 func GetNextReadySteps(wf *workflow.Workflow) ([]string, bool) {

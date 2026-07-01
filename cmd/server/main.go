@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"durable-engine/internal/api"
-	"durable-engine/internal/storage"
+	"task-forge/internal/api"
+	"task-forge/internal/storage"
 
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"

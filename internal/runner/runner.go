@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"durable-engine/internal/executor"
-	"durable-engine/internal/scheduler"
-	"durable-engine/internal/storage"
-	"durable-engine/internal/workflow"
+	"task-forge/internal/executor"
+	"task-forge/internal/scheduler"
+	"task-forge/internal/storage"
+	"task-forge/internal/workflow"
 )
 
 func RunWorkflow(

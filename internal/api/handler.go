@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"durable-engine/internal/executor"
-	"durable-engine/internal/runner"
-	"durable-engine/internal/storage"
-	"durable-engine/internal/workflow"
+	"task-forge/internal/executor"
+	"task-forge/internal/runner"
+	"task-forge/internal/storage"
+	"task-forge/internal/workflow"
 
 	"github.com/google/uuid"
 )

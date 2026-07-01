@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	"durable-engine/internal/executor"
-	"durable-engine/internal/runner"
-	"durable-engine/internal/workflow"
+	"task-forge/internal/executor"
+	"task-forge/internal/runner"
+	"task-forge/internal/workflow"
 )
 
 func TestFullWorkflowEngine(t *testing.T) {
